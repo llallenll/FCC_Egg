@@ -1,0 +1,84 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-09-21T17:28:08-04:00",
+    "name": "FCC Install",
+    "author": "mrnitro2017@gmail.com",
+    "description": "A powerful and lightweight Virtual Private Server (VPS) egg for Pterodactyl Panel.\r\nSee: https://github.com/ysdragon/Pterodactyl-VPS-Egg",
+    "features": null,
+    "docker_images": {
+        "Quay.io": "quay.io/ydrag0n/pterodactyl-vps-egg:latest",
+        "Docker Hub": "ysdragon/pterodactyl-vps-egg:latest",
+        "GitHub Container Registry": "ghcr.io/ysdragon/pterodactyl-vps-egg:latest"
+    },
+    "file_denylist": [],
+    "startup": "./run.sh",
+    "config": {
+        "files": "{\r\n    \"vps.config\": {\r\n        \"parser\": \"properties\",\r\n        \"find\": {\r\n            \"internalip\": \"{{server.build.default.ip}}\",\r\n            \"port\": \"{{server.build.default.port}}\",\r\n            \"port2\": \"{{server.build.env.port2}}\",\r\n            \"port3\": \"{{server.build.env.PORT3}}\",\r\n            \"port4\": \"{{server.build.env.port3}}\",\r\n            \"port5\": \"{{server.build.env.port5}}\",\r\n            \"port6\": \"{{server.build.env.port6}}\",\r\n            \"port7\": \"{{server.build.env.port7}}\",\r\n            \"port8\": \"{{server.build.env.port8}}\",\r\n            \"port9\": \"{{server.build.env.port9}}\",\r\n            \"port10\": \"{{server.build.env.port10}}\",\r\n            \"port11\": \"{{server.build.env.port11}}\",\r\n            \"port12\": \"{{server.build.env.port12}}\",\r\n            \"port13\": \"{{server.build.env.port13}}\",\r\n            \"port14\": \"{{server.build.env.port14}}\",\r\n            \"port15\": \"{{server.build.env.port15}}\",\r\n            \"port16\": \"{{server.build.env.port16}}\",\r\n            \"port17\": \"{{server.build.env.port17}}\",\r\n            \"port18\": \"{{server.build.env.port18}}\",\r\n            \"port19\": \"{{server.build.env.port19}}\",\r\n            \"port20\": \"{{server.build.env.port20}}\"\r\n        }\r\n    }\r\n}",
+        "startup": "{\r\n    \"done\": \"Starting\"\r\n}",
+        "logs": "{}",
+        "stop": "exit"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\r\nset -e\r\ncd /mnt/server\r\napt-get update -y\r\napt-get install -y curl tar xz-utils ca-certificates\r\nARCH=$(uname -m)\r\ncase \"$ARCH\" in\r\n  x86_64)  ARCH_ALT=amd64 ;;\r\n  aarch64) ARCH_ALT=arm64 ;;\r\n  riscv64) ARCH_ALT=riscv64 ;;\r\n  *) echo \"unsupported arch $ARCH\"; exit 1 ;;\r\nesac\r\nBASE=\"https://images.linuxcontainers.org/images/ubuntu/noble/${ARCH_ALT}/default\"\r\nLATEST=$(curl -s \"$BASE/\" | grep -o '[0-9]\\{8\\}_[0-9]\\{2\\}:[0-9]\\{2\\}/' | sort -r | head -n 1)\r\necho \"Using build: $LATEST\"\r\ncurl -Ls \"${BASE}/${LATEST}rootfs.tar.xz\" -o rootfs.tar.xz\r\ntar -xf rootfs.tar.xz -C /mnt/server\r\nrm -f rootfs.tar.xz /mnt/server/etc/resolv.conf\r\nmkdir -p /mnt/server/home/container\r\n\r\n# Shell helpers from the upstream VPS egg (run.sh sources /common.sh).\r\nUPSTREAM=\"https://raw.githubusercontent.com/ysdragon/Pterodactyl-VPS-Egg/main/scripts\"\r\ncurl -fLs \"$UPSTREAM/common.sh\" -o /mnt/server/common.sh\r\n\r\n# run.sh and autorun.sh are versioned in the FCC_Egg repo. On every start autorun.sh\r\n# compares that repo's VERSION with /.fcc-scripts-version and asks y/n before\r\n# replacing both scripts, so the installed version is recorded here.\r\nFCC_EGG=\"https://raw.githubusercontent.com/llallenll/FCC_Egg/${FCC_EGG_REF:-main}\"\r\necho \"Fetching FCC scripts from $FCC_EGG\"\r\ncurl -fLs \"$FCC_EGG/run.sh\"     -o /mnt/server/run.sh\r\ncurl -fLs \"$FCC_EGG/autorun.sh\" -o /mnt/server/autorun.sh\r\ncurl -fLs \"$FCC_EGG/VERSION\"    -o /mnt/server/.fcc-scripts-version\r\nchmod +x /mnt/server/run.sh /mnt/server/common.sh /mnt/server/autorun.sh\r\nprintf \"nameserver 1.1.1.1\\nnameserver 1.0.0.1\\n\" > /mnt/server/etc/resolv.conf\r\n\r\ntouch /mnt/server/.installed",
+            "container": "debian:bookworm-slim",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "FCC PORT",
+            "description": "",
+            "env_variable": "port1",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:5",
+            "field_type": "text"
+        },
+        {
+            "name": "SSH PORT",
+            "description": "",
+            "env_variable": "port2",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:5",
+            "field_type": "text"
+        },
+        {
+            "name": "SSH PASSWORD",
+            "description": "",
+            "env_variable": "SSH_PASSWORD",
+            "default_value": "password",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "SCRIPT UPDATE PROMPT TIMEOUT",
+            "description": "Seconds autorun.sh waits at start for a y/n answer when a new version of run.sh/autorun.sh is found on GitHub. No answer = not updated this time (asked again next start). 0 = wait forever.",
+            "env_variable": "FCC_UPDATE_TIMEOUT",
+            "default_value": "60",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|min:0|max:86400",
+            "field_type": "text"
+        },
+        {
+            "name": "SCRIPTS BRANCH",
+            "description": "Branch of the llallenll/FCC_Egg GitHub repo that run.sh, autorun.sh and VERSION are installed and updated from.",
+            "env_variable": "FCC_EGG_REF",
+            "default_value": "main",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:100",
+            "field_type": "text"
+        }
+    ]
+}
