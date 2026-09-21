@@ -16,16 +16,34 @@ FCC_NAME=forthway                       # pm2 process name that FCC's install.sh
 FCC_EGG_REPO="${FCC_EGG_REPO:-llallenll/FCC_Egg}"     # GitHub owner/repo holding the scripts
 FCC_EGG_REF="${FCC_EGG_REF:-main}"                    # branch (or tag) to follow  -- egg variable "SCRIPTS BRANCH"
 FCC_EGG_RAW="${FCC_EGG_RAW:-https://raw.githubusercontent.com/$FCC_EGG_REPO/$FCC_EGG_REF}"
+FCC_EGG_API="${FCC_EGG_API:-https://api.github.com}"  # used instead of raw downloads when FCC_GITHUB_TOKEN is set
 FCC_VERSION_FILE=/.fcc-scripts-version                # version currently installed on this VPS
 FCC_UPDATE_TIMEOUT="${FCC_UPDATE_TIMEOUT:-60}"        # seconds to wait for y/n (no answer = n); 0 = wait forever  -- egg variable "SCRIPT UPDATE PROMPT TIMEOUT"
+FCC_GITHUB_TOKEN="${FCC_GITHUB_TOKEN:-}"              # only needed while the FCC_Egg repo is private  -- egg variable "GITHUB TOKEN"
 
-fcc_fetch() {   # fcc_fetch URL FILE  -- download with curl or wget, whichever is installed
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --connect-timeout 10 --max-time 60 -o "$2" "$1?nocache=$(date +%s)"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q --timeout=30 --tries=2 -O "$2" "$1?nocache=$(date +%s)"
+fcc_fetch() {   # fcc_fetch FILE DEST  -- download FILE from the FCC_Egg repo with curl or wget, whichever is installed
+    if [ -n "$FCC_GITHUB_TOKEN" ]; then
+        # private repo: the GitHub API hands the raw file to the token's owner
+        url="$FCC_EGG_API/repos/$FCC_EGG_REPO/contents/$1?ref=$FCC_EGG_REF&nocache=$(date +%s)"
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL --connect-timeout 10 --max-time 60 -H "Accept: application/vnd.github.raw" \
+                -H "Authorization: Bearer $FCC_GITHUB_TOKEN" -o "$2" "$url"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q --timeout=30 --tries=2 --header="Accept: application/vnd.github.raw" \
+                --header="Authorization: Bearer $FCC_GITHUB_TOKEN" -O "$2" "$url"
+        else
+            return 1
+        fi
     else
-        return 1
+        # public repo: plain raw download
+        url="$FCC_EGG_RAW/$1?nocache=$(date +%s)"
+        if command -v curl >/dev/null 2>&1; then
+            curl -fsSL --connect-timeout 10 --max-time 60 -o "$2" "$url"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -q --timeout=30 --tries=2 -O "$2" "$url"
+        else
+            return 1
+        fi
     fi
 }
 
@@ -69,7 +87,7 @@ fcc_ask_update() {   # 0 = update now, 1 = not now
 
 fcc_apply_update() {   # fcc_apply_update NEW_VERSION  -- replaces /run.sh + /autorun.sh, then re-runs autorun.sh
     echo "[FCC] Downloading run.sh and autorun.sh version $1 from GitHub..."
-    if ! fcc_fetch "$FCC_EGG_RAW/run.sh" /run.sh.new || ! fcc_fetch "$FCC_EGG_RAW/autorun.sh" /autorun.sh.new; then
+    if ! fcc_fetch run.sh /run.sh.new || ! fcc_fetch autorun.sh /autorun.sh.new; then
         rm -f /run.sh.new /autorun.sh.new
         echo "[FCC] Download failed -- keeping the current scripts. You will be asked again on the next start."
         return 1
@@ -102,7 +120,7 @@ fcc_check_for_updates() {
         return 0
     fi
     echo "[FCC] Checking GitHub ($FCC_EGG_REPO, branch $FCC_EGG_REF) for script updates..."
-    if ! fcc_fetch "$FCC_EGG_RAW/VERSION" /.fcc-scripts-version.remote; then
+    if ! fcc_fetch VERSION /.fcc-scripts-version.remote; then
         rm -f /.fcc-scripts-version.remote
         echo "[FCC] Script update check skipped: could not download VERSION from GitHub."
         return 0

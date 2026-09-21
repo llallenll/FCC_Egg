@@ -12,6 +12,21 @@ and installs / restarts [Forthway Command Center](https://github.com/llallenll/F
 
 On the VPS these live at `/run.sh`, `/autorun.sh` and `/.fcc-scripts-version` (the root of the server's file manager).
 
+## Public or private repo
+
+The VPS downloads the scripts straight from GitHub, so it must be able to read this repo. **This repo is private
+right now**, so pick one of these before installing or updating a server:
+
+* **Make the repo public** (simplest). Nothing to configure; the scripts contain no secrets (the SSH password comes
+  from the egg variable). Downloads use `raw.githubusercontent.com`.
+* **Keep it private.** Create a GitHub personal access token that can read this repo's contents (fine-grained token:
+  *Contents: Read-only* on `FCC_Egg`; classic token: `repo` scope) and put it in the egg variable
+  **GITHUB TOKEN** (`FCC_GITHUB_TOKEN`) on each server. The installer and `autorun.sh` then download through the
+  GitHub API as that token. Anyone who can open the server's Startup tab can read the token.
+
+Without either, the install fails at "Fetching FCC scripts" and every start prints
+`Script update check skipped: could not download VERSION from GitHub` and boots normally without updating.
+
 ## How updates work
 
 On every start, before anything else, `autorun.sh`:
@@ -46,15 +61,24 @@ server's **SCRIPTS BRANCH** variable to it.
 
 ## Fresh install
 
-Import `egg-fcc-install.json`. The install script downloads the Ubuntu rootfs, the upstream `common.sh`, and
+Import `egg-fcc-install.json` (or, for the egg you already have, use its *Update egg from file* button so existing
+servers get the new variables too). The install script downloads the Ubuntu rootfs, the upstream `common.sh`, and
 `run.sh` + `autorun.sh` + `VERSION` from this repo, so a new server starts on the current version without prompting.
+If the repo is private, set **GITHUB TOKEN** on the server before installing.
 
 ## Servers created with the previous egg
 
-They still have the old `autorun.sh` without the update check. Once, from the panel console (or SSH) inside the VPS:
+They still have the old `autorun.sh` without the update check. Update the egg in the panel from the new JSON (so the
+servers get the new variables; set **GITHUB TOKEN** if the repo is private), then once, from the panel console (or SSH)
+inside the VPS:
 
 ```sh
+# public repo
 curl -fsSL https://raw.githubusercontent.com/llallenll/FCC_Egg/main/autorun.sh -o /autorun.sh && chmod +x /autorun.sh
+
+# private repo (replace TOKEN)
+curl -fsSL -H 'Accept: application/vnd.github.raw' -H 'Authorization: Bearer TOKEN' \
+  'https://api.github.com/repos/llallenll/FCC_Egg/contents/autorun.sh?ref=main' -o /autorun.sh && chmod +x /autorun.sh
 ```
 
 Restart the server. Since `/.fcc-scripts-version` does not exist yet, it will report `unknown -> <version>` and ask once;
