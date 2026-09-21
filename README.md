@@ -14,17 +14,16 @@ On the VPS these live at `/run.sh`, `/autorun.sh` and `/.fcc-scripts-version` (t
 
 ## Public or private repo
 
-The VPS downloads the scripts straight from GitHub, so it must be able to read this repo. **This repo is private
-right now**, so pick one of these before installing or updating a server:
+The VPS downloads the scripts straight from GitHub, so it must be able to read this repo.
 
-* **Make the repo public** (simplest). Nothing to configure; the scripts contain no secrets (the SSH password comes
+* **Public repo** (the current setup). Nothing to configure; the scripts contain no secrets (the SSH password comes
   from the egg variable). Downloads use `raw.githubusercontent.com`.
-* **Keep it private.** Create a GitHub personal access token that can read this repo's contents (fine-grained token:
-  *Contents: Read-only* on `FCC_Egg`; classic token: `repo` scope) and put it in the egg variable
-  **GITHUB TOKEN** (`FCC_GITHUB_TOKEN`) on each server. The installer and `autorun.sh` then download through the
-  GitHub API as that token. Anyone who can open the server's Startup tab can read the token.
+* **Private repo.** If you ever make it private, create a GitHub personal access token that can read this repo's
+  contents (fine-grained token: *Contents: Read-only* on `FCC_Egg`; classic token: `repo` scope) and put it in the
+  egg variable **GITHUB TOKEN** (`FCC_GITHUB_TOKEN`) on each server. The installer and `autorun.sh` then download
+  through the GitHub API as that token. Anyone who can open the server's Startup tab can read the token.
 
-Without either, the install fails at "Fetching FCC scripts" and every start prints
+If the repo cannot be read, the install fails at "Fetching FCC scripts" and every start prints
 `Script update check skipped: could not download VERSION from GitHub` and boots normally without updating.
 
 ## How updates work
