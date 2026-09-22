@@ -30,7 +30,11 @@ If the repo cannot be read, the install fails at "Fetching FCC scripts" and ever
 
 On every start, before anything else, `autorun.sh`:
 
-1. Downloads `VERSION` from this repo (`FCC_EGG_REPO` / `FCC_EGG_REF`, defaults `llallenll/FCC_Egg` / `main`).
+1. Asks GitHub which commit the branch points at right now (`FCC_EGG_REPO` / `FCC_EGG_REF`, defaults
+   `llallenll/FCC_Egg` / `main`) and downloads `VERSION` from that commit. Raw downloads by branch name can be served
+   from a cache that is up to 5 minutes old, a commit never changes, so a restart right after a push already sees
+   the push. If the API cannot be asked (offline, or more than 60 requests per hour from one IP without a token) it
+   says so and falls back to the branch name.
 2. Compares it with the version recorded on the VPS in `/.fcc-scripts-version`.
 3. If they differ, prints the old and new version and asks in the console:
 

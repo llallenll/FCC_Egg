@@ -15,35 +15,55 @@ FCC_NAME=forthway                       # pm2 process name that FCC's install.sh
 # repo to roll a change out; nothing is replaced without a "y".
 FCC_EGG_REPO="${FCC_EGG_REPO:-llallenll/FCC_Egg}"     # GitHub owner/repo holding the scripts
 FCC_EGG_REF="${FCC_EGG_REF:-main}"                    # branch (or tag) to follow  -- egg variable "SCRIPTS BRANCH"
-FCC_EGG_RAW="${FCC_EGG_RAW:-https://raw.githubusercontent.com/$FCC_EGG_REPO/$FCC_EGG_REF}"
-FCC_EGG_API="${FCC_EGG_API:-https://api.github.com}"  # used instead of raw downloads when FCC_GITHUB_TOKEN is set
+FCC_EGG_RAW="${FCC_EGG_RAW:-https://raw.githubusercontent.com/$FCC_EGG_REPO}"   # + /<commit>/<file>
+FCC_EGG_API="${FCC_EGG_API:-https://api.github.com}"  # asked for the branch's current commit; also serves the files when FCC_GITHUB_TOKEN is set
 FCC_VERSION_FILE=/.fcc-scripts-version                # version currently installed on this VPS
 FCC_UPDATE_TIMEOUT="${FCC_UPDATE_TIMEOUT:-60}"        # seconds to wait for y/n (no answer = n); 0 = wait forever  -- egg variable "SCRIPT UPDATE PROMPT TIMEOUT"
 FCC_GITHUB_TOKEN="${FCC_GITHUB_TOKEN:-}"              # only needed while the FCC_Egg repo is private  -- egg variable "GITHUB TOKEN"
 
-fcc_fetch() {   # fcc_fetch FILE DEST  -- download FILE from the FCC_Egg repo with curl or wget, whichever is installed
-    if [ -n "$FCC_GITHUB_TOKEN" ]; then
-        # private repo: the GitHub API hands the raw file to the token's owner
-        url="$FCC_EGG_API/repos/$FCC_EGG_REPO/contents/$1?ref=$FCC_EGG_REF&nocache=$(date +%s)"
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL --connect-timeout 10 --max-time 60 -H "Accept: application/vnd.github.raw" \
-                -H "Authorization: Bearer $FCC_GITHUB_TOKEN" -o "$2" "$url"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -q --timeout=30 --tries=2 --header="Accept: application/vnd.github.raw" \
-                --header="Authorization: Bearer $FCC_GITHUB_TOKEN" -O "$2" "$url"
+fcc_get() {   # fcc_get URL DEST ACCEPT  -- one download with curl or wget, whichever is installed (token sent when set)
+    if command -v curl >/dev/null 2>&1; then
+        if [ -n "$FCC_GITHUB_TOKEN" ]; then
+            curl -fsSL --connect-timeout 10 --max-time 60 -H "Accept: $3" -H "Authorization: Bearer $FCC_GITHUB_TOKEN" -o "$2" "$1"
         else
-            return 1
+            curl -fsSL --connect-timeout 10 --max-time 60 -H "Accept: $3" -o "$2" "$1"
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if [ -n "$FCC_GITHUB_TOKEN" ]; then
+            wget -q --timeout=30 --tries=2 --header="Accept: $3" --header="Authorization: Bearer $FCC_GITHUB_TOKEN" -O "$2" "$1"
+        else
+            wget -q --timeout=30 --tries=2 --header="Accept: $3" -O "$2" "$1"
         fi
     else
-        # public repo: plain raw download
-        url="$FCC_EGG_RAW/$1?nocache=$(date +%s)"
-        if command -v curl >/dev/null 2>&1; then
-            curl -fsSL --connect-timeout 10 --max-time 60 -o "$2" "$url"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -q --timeout=30 --tries=2 -O "$2" "$url"
-        else
-            return 1
-        fi
+        return 1
+    fi
+}
+
+fcc_resolve_ref() {   # sets fcc_ref (and fcc_desc): the commit $FCC_EGG_REF points at right now, or the branch name if GitHub cannot be asked
+    # raw.githubusercontent.com serves a branch's files from a cache that can be up to 5 minutes old, so
+    # everything is downloaded by commit id instead (a commit never changes). The API answer is not cached.
+    fcc_ref="$FCC_EGG_REF"
+    fcc_desc="branch $FCC_EGG_REF"
+    if fcc_get "$FCC_EGG_API/repos/$FCC_EGG_REPO/commits/$FCC_EGG_REF" /.fcc-scripts-commit.tmp "application/vnd.github.sha"; then
+        sha=$(tr -d '[:space:]' < /.fcc-scripts-commit.tmp)
+        case "$sha" in
+            *[!0-9a-f]*|"") ;;                                   # not a commit id: keep the branch name
+            *) if [ "${#sha}" -eq 40 ]; then
+                   fcc_ref="$sha"
+                   fcc_desc="branch $FCC_EGG_REF at commit $(printf '%.7s' "$sha")"
+               fi ;;
+        esac
+    fi
+    rm -f /.fcc-scripts-commit.tmp
+}
+
+fcc_fetch() {   # fcc_fetch FILE DEST  -- download FILE from the FCC_Egg repo at the commit fcc_resolve_ref found
+    if [ -n "$FCC_GITHUB_TOKEN" ]; then
+        # private repo: the GitHub API hands the raw file to the token's owner
+        fcc_get "$FCC_EGG_API/repos/$FCC_EGG_REPO/contents/$1?ref=$fcc_ref" "$2" "application/vnd.github.raw"
+    else
+        # public repo: raw download by commit id, so no cached copy of the branch can be served
+        fcc_get "$FCC_EGG_RAW/$fcc_ref/$1?nocache=$(date +%s)" "$2" "*/*"
     fi
 }
 
@@ -119,7 +139,11 @@ fcc_check_for_updates() {
         echo "[FCC] Script update check skipped: curl/wget are not installed yet."
         return 0
     fi
-    echo "[FCC] Checking GitHub ($FCC_EGG_REPO, branch $FCC_EGG_REF) for script updates..."
+    fcc_resolve_ref
+    echo "[FCC] Checking GitHub ($FCC_EGG_REPO, $fcc_desc) for script updates..."
+    if [ "$fcc_ref" = "$FCC_EGG_REF" ]; then
+        echo "[FCC] (could not ask GitHub for the branch's latest commit -- a copy up to 5 minutes old may be served)"
+    fi
     if ! fcc_fetch VERSION /.fcc-scripts-version.remote; then
         rm -f /.fcc-scripts-version.remote
         echo "[FCC] Script update check skipped: could not download VERSION from GitHub."
@@ -206,7 +230,7 @@ else
     # Restart / reboot: the pm2 daemon died with the container, so restore the
     # saved process list. If the saved list is missing, start FCC directly.
     echo "[FCC] Starting Forthway Command Center..."
-    pm2 resurrect
+    pm2 resurrect --silent      # --silent: the `pm2 list` further down prints the process table once
     if ! pm2 describe "$FCC_NAME" >/dev/null 2>&1; then
         (cd "$FCC_DIR/forthway" && SERVER_PORT="${SERVER_PORT:-4000}" \
             pm2 start hub/server.mjs --name "$FCC_NAME" --time --update-env) && pm2 save
