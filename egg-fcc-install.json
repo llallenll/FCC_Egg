@@ -61,6 +61,16 @@
             "field_type": "text"
         },
         {
+            "name": "PIN LOGIN",
+            "description": "1 = every start of this server makes a fresh 6-character PIN, prints it in this console and makes it the Command Center's sign-in code (Command Center 2.10.0 or newer; older ones keep asking for their password). 0 = the Command Center asks for its password instead.",
+            "env_variable": "FCC_PIN_LOGIN",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:0,1",
+            "field_type": "text"
+        },
+        {
             "name": "SCRIPT UPDATE PROMPT TIMEOUT",
             "description": "Seconds autorun.sh waits at start for a y/n answer when a new version of run.sh/autorun.sh is found on GitHub. No answer = not updated this time (asked again next start). 0 = wait forever.",
             "env_variable": "FCC_UPDATE_TIMEOUT",

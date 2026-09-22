@@ -3,7 +3,8 @@
 #   every boot : check GitHub (FCC_Egg repo) for a new version of run.sh + autorun.sh
 #                and ask y/n in the console before replacing them
 #   first boot : install SSH, nano, Node, pm2, git and Forthway Command Center
-#   every boot : bring Forthway Command Center back up under pm2, show pm2 list, start SSH
+#   every boot : make a fresh sign-in PIN for Forthway Command Center, bring FCC back up
+#                under pm2, show pm2 list, print the PIN in a box, start SSH
 
 FCC_DIR=/home/container/Forthway-Command-Center   # clone target: the VPS boots with cwd=/home/container (also $HOME)
 FCC_NAME=forthway                       # pm2 process name that FCC's install.sh uses
@@ -20,6 +21,81 @@ FCC_EGG_API="${FCC_EGG_API:-https://api.github.com}"  # asked for the branch's c
 FCC_VERSION_FILE=/.fcc-scripts-version                # version currently installed on this VPS
 FCC_UPDATE_TIMEOUT="${FCC_UPDATE_TIMEOUT:-60}"        # seconds to wait for y/n (no answer = n); 0 = wait forever  -- egg variable "SCRIPT UPDATE PROMPT TIMEOUT"
 FCC_GITHUB_TOKEN="${FCC_GITHUB_TOKEN:-}"              # only needed while the FCC_Egg repo is private  -- egg variable "GITHUB TOKEN"
+
+# --- sign-in PIN --------------------------------------------------------------
+# Every start of this server makes a fresh six-character code, writes it where the
+# Command Center reads it, and prints it in a box in this console. The code is the
+# panel's sign-in credential: whoever can see this console can sign in, and nobody
+# else can. It stays the same until the next start of this server, however often
+# the panel itself restarts (the file is read at each sign-in, not at start-up).
+FCC_PIN_LOGIN="${FCC_PIN_LOGIN:-1}"                   # 1 = sign in with the PIN (default), 0 = with the panel's password  -- egg variable "PIN LOGIN"
+FCC_PIN_FILE="${FCC_PIN_FILE:-$FCC_DIR/forthway/hub/data/pin}"   # FCC's install.sh puts the panel in $FCC_DIR/forthway; the panel reads hub/data/pin
+FCC_PIN_LENGTH=6
+FCC_PIN_CHARS="ABCDEFGHJKMNPQRSTUVWXYZ23456789"        # no 0/O or 1/I/L: the code is read off a screen
+
+fcc_make_pin() {   # sets FCC_PIN: FCC_PIN_LENGTH random characters from FCC_PIN_CHARS
+    FCC_PIN=""
+    tries=0
+    while [ "${#FCC_PIN}" -ne "$FCC_PIN_LENGTH" ] && [ "$tries" -lt 5 ]; do
+        FCC_PIN=$(LC_ALL=C tr -dc "$FCC_PIN_CHARS" < /dev/urandom 2>/dev/null | head -c "$FCC_PIN_LENGTH")
+        tries=$((tries + 1))
+    done
+    if [ "${#FCC_PIN}" -ne "$FCC_PIN_LENGTH" ]; then
+        # no usable /dev/urandom: awk's generator, seeded from the clock and this pid, is the fallback
+        FCC_PIN=$(awk -v n="$FCC_PIN_LENGTH" -v chars="$FCC_PIN_CHARS" -v seed="$(date +%s)$$" \
+            'BEGIN { srand(seed); for (i = 0; i < n; i++) printf "%s", substr(chars, int(rand() * length(chars)) + 1, 1) }')
+    fi
+}
+
+fcc_save_pin() {   # writes FCC_PIN where the Command Center reads it -- or removes it, when PIN sign-in is off
+    if [ "$FCC_PIN_LOGIN" != "1" ]; then
+        rm -f "$FCC_PIN_FILE"
+        return 0
+    fi
+    mkdir -p "$(dirname "$FCC_PIN_FILE")" || return 1
+    # written whole, then renamed: the panel never reads a half-written file
+    printf '%s\n' "$FCC_PIN" > "$FCC_PIN_FILE.tmp" && chmod 600 "$FCC_PIN_FILE.tmp" && mv -f "$FCC_PIN_FILE.tmp" "$FCC_PIN_FILE"
+}
+
+fcc_print_pin_box() {   # the PIN, in a box, as the last thing printed before SSH starts
+    if [ "$FCC_PIN_LOGIN" != "1" ]; then
+        echo "[FCC] PIN sign-in is off (PIN LOGIN = $FCC_PIN_LOGIN): the panel asks for its password."
+        return 0
+    fi
+    if [ -t 1 ]; then
+        c_box=$(printf '\033[1;33m'); c_title=$(printf '\033[1;97m'); c_pin=$(printf '\033[1;92m')
+        c_text=$(printf '\033[37m');   c_warn=$(printf '\033[1;31m');  c_off=$(printf '\033[0m')
+    else
+        c_box=""; c_title=""; c_pin=""; c_text=""; c_warn=""; c_off=""
+    fi
+    w=56                                  # inner width; every row is padded to it, so the right edge lines up
+    bar=""; i=0
+    while [ "$i" -lt "$w" ]; do bar="$bar═"; i=$((i + 1)); done
+    row() {   # row TEXT COLOUR  -- one row, TEXT centred (ASCII only: the width maths counts bytes)
+        left=$(( (w - ${#1}) / 2 )); right=$(( w - left - ${#1} ))
+        printf '  %s║%s%*s%s%s%s%*s%s║%s\n' "$c_box" "$c_off" "$left" "" "$2" "$1" "$c_off" "$right" "" "$c_box" "$c_off"
+    }
+    spaced=$(printf '%s' "$FCC_PIN" | sed 's/./& /g; s/ $//')
+    echo
+    printf '  %s╔%s╗%s\n' "$c_box" "$bar" "$c_off"
+    row "" ""
+    row "Forthway Command Center PIN" "$c_title"
+    row "" ""
+    row "$spaced" "$c_pin"
+    row "" ""
+    row "Type this code on the panel's sign-in page." "$c_text"
+    row "A new one is made every time this server starts." "$c_text"
+    row "" ""
+    printf '  %s╚%s╝%s\n' "$c_box" "$bar" "$c_off"
+    echo
+    # The panel only asks for a PIN from version 2.10.0. A server that took this
+    # script update before updating the panel still signs in with its password.
+    if [ -f "$FCC_DIR/forthway/hub/server.mjs" ] && ! grep -q 'FCC_PIN_FILE' "$FCC_DIR/forthway/hub/server.mjs"; then
+        printf '%s[FCC] The installed Command Center does not use the PIN yet -- it still asks for its password.%s\n' "$c_warn" "$c_off"
+        printf '%s[FCC] Update it from the panel (Settings -> Updates); the PIN above works from the next sign-in.%s\n' "$c_warn" "$c_off"
+        echo
+    fi
+}
 
 fcc_get() {   # fcc_get URL DEST ACCEPT  -- one download with curl or wget, whichever is installed (token sent when set)
     if command -v curl >/dev/null 2>&1; then
@@ -171,6 +247,9 @@ fcc_check_for_updates() {
 
 fcc_check_for_updates
 
+# --- the sign-in PIN for this boot ------------------------------------------
+fcc_make_pin
+
 # --- first boot: install everything ----------------------------------------
 if [ ! -e /.setup-done ]; then
     export DEBIAN_FRONTEND=noninteractive
@@ -219,6 +298,9 @@ INNER
     clear
     echo "[FCC] Installing Forthway Command Center, please wait..."
     git clone https://github.com/llallenll/Forthway-Command-Center "$FCC_DIR"
+    # The PIN goes in before the panel's first start, so it never asks anyone to
+    # choose a password. install.sh leaves hub/data alone.
+    fcc_save_pin
     # FCC's install.sh starts the "forthway" pm2 process and runs `pm2 save`;
     # that saved list is what `pm2 resurrect` brings back on later boots.
     (cd "$FCC_DIR" && bash install.sh)
@@ -230,6 +312,7 @@ else
     # Restart / reboot: the pm2 daemon died with the container, so restore the
     # saved process list. If the saved list is missing, start FCC directly.
     echo "[FCC] Starting Forthway Command Center..."
+    fcc_save_pin                # this boot's PIN, in place before the panel comes back
     pm2 resurrect --silent      # --silent: the `pm2 list` further down prints the process table once
     if ! pm2 describe "$FCC_NAME" >/dev/null 2>&1; then
         (cd "$FCC_DIR/forthway" && SERVER_PORT="${SERVER_PORT:-4000}" \
@@ -239,4 +322,5 @@ fi
 
 # --- runs on every boot ---
 pm2 list
+fcc_print_pin_box
 /usr/local/bin/ssh

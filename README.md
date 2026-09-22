@@ -6,7 +6,7 @@ and installs / restarts [Forthway Command Center](https://github.com/llallenll/F
 | File | What it is |
 | --- | --- |
 | `egg-fcc-install.json` | The egg. Import it in the panel (Nests → Import Egg). |
-| `autorun.sh` | Runs on **every** start of the VPS. Checks this repo for script updates, installs everything on the first boot, brings FCC back up under pm2 on later boots, then starts SSH. |
+| `autorun.sh` | Runs on **every** start of the VPS. Checks this repo for script updates, installs everything on the first boot, brings FCC back up under pm2 on later boots, prints the sign-in PIN in a box, then starts SSH. |
 | `run.sh` | The egg's startup script (a copy of the upstream `run.sh`, kept here so it can be updated together with `autorun.sh`). |
 | `VERSION` | Version of the scripts. Bump it to roll an update out to the servers. |
 
@@ -25,6 +25,42 @@ The VPS downloads the scripts straight from GitHub, so it must be able to read t
 
 If the repo cannot be read, the install fails at "Fetching FCC scripts" and every start prints
 `Script update check skipped: could not download VERSION from GitHub` and boots normally without updating.
+
+## Sign-in PIN
+
+Every start of the server makes a fresh six-character code — letters and digits, never `0`/`O` or `1`/`I`/`L` —
+and prints it in the panel console, in a box, right under the pm2 table:
+
+```
+  ╔════════════════════════════════════════════════════════╗
+  ║                                                        ║
+  ║              Forthway Command Center PIN               ║
+  ║                                                        ║
+  ║                      A 7 K 3 M 9                       ║
+  ║                                                        ║
+  ║      Type this code on the panel's sign-in page.       ║
+  ║    A new one is made every time this server starts.    ║
+  ║                                                        ║
+  ╚════════════════════════════════════════════════════════╝
+```
+
+That code is the Command Center's sign-in credential: its sign-in page asks for the PIN instead of a password, and
+whoever can see this console can sign in. Case and spacing do not matter when typing it. The PIN stays the same until
+the next start of the server, however often the panel itself restarts (an update from the panel, the *Restart the
+panel* button, a crash pm2 recovers from), because the panel reads it at each sign-in rather than at its own start.
+
+How it works: `autorun.sh` writes the code to `/home/container/Forthway-Command-Center/forthway/hub/data/pin` before
+the panel comes up (mode 600, rewritten each boot), and the panel — from **version 2.10.0** — reads that file. A panel
+with a PIN never shows its "choose a password" setup page, and its password (if one was set before) is not accepted
+while the file is there. Sessions already signed in stay signed in until they expire, as with a password.
+
+* **Existing servers** that take this script update while still running an older Command Center keep signing in
+  with their password until the panel is updated (Settings → Updates in the panel); `autorun.sh` says so in red under
+  the box. Once the panel is 2.10.0 or newer, the PIN in the console is what signs you in — no restart needed.
+* **Back to a password**: set the egg variable **PIN LOGIN** (`FCC_PIN_LOGIN`) to `0` and restart the server. The file
+  is removed and the panel asks for its password again (or, on a panel that never had one, for a password to be
+  chosen). Servers made with an egg imported before this variable existed behave as if it were `1`; use *Update egg
+  from file* with the current `egg-fcc-install.json` to get the switch.
 
 ## How updates work
 
